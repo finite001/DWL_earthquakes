@@ -12,29 +12,11 @@ from airflow.models import Variable
 
 def set_up_query(ti):
     BEARER_TOKEN = Variable.get("BEARER_TOKEN")
-    # Setting filter to exclude certain usernames (hardcoded here, but extracted with
-    # code from test query => This was a one type step and therefore done in jupyter notebook)
-    filter_names_query = "-from:quakeupdates -from:jojo2727 -from:MonitorSismico -from:MyComicalLife " \
-                         "-from:news_sokuho_bot -from:DiariosRobot -from:EN_NERV -from:GDACS -from:earthquake_jp " \
-                         "-from:EQAlerts -from:j1_quake -from:iSachinSrivstva -from:VolcanoEWS -from:ChileAlertaApp " \
-                         "-from:earthb0t -from:sexy_vegetables -from:zishin3255 -from:everyEarthquake -from:MapQuake " \
-                         "-from:swap_bot_bash -from:eq_map -from:eq_map_es -from:eq_map_ww -from:SEISMOinfo " \
-                         "-from:VegaBajaWx -from:WatchOurCity -from:Keith_Event -from:SismoDetector -from:cvb_223 " \
-                         "-from:ExBulletinUk -from:EMSC -from:StoixeioJewelry -from:megamodo -from:earthquakevt " \
-                         "-from:QuakeBotter -from:twtaka_jp -from:EarthquakeTw -from:ENSO1998 -from:eq_map_ww2 " \
-                         "-from:eq_map_es2 "
-
-    # start_time = ["2021-07-01T00:00:00.000Z", "2021-01-01T00:00:00.000Z", "2020-07-01T00:00:00.000Z", \
-    #               "2020-01-01T00:00:00.000Z", "2019-07-01T00:00:00.000Z", "2019-01-01T00:00:00.000Z", \
-    #               "2018-07-01T00:00:00.000Z", "2018-01-01T00:00:00.000Z", "2017-07-01T00:00:00.000Z", \
-    #               "2017-01-01T00:00:00.000Z", "2016-07-01T00:00:00.000Z", "2016-01-01T00:00:00.000Z",]
-    # end_time = ["2021-10-31T23:59:59.000Z", "2021-06-30T23:59:59.000Z", "2020-12-31T23:59:59.000Z", \
-    #               "2020-06-30T23:59:59.000Z", "2019-12-31T23:59:59.000Z", "2019-06-30T23:59:59.000Z", \
-    #               "2018-12-31T23:59:59.000Z", "2018-06-30T23:59:59.000Z", "2017-12-31T23:59:59.000Z", \
-    #               "2017-06-30T23:59:59.000Z", "2016-12-31T23:59:59.000Z", "2016-06-30T23:59:59.000Z",]
+    # Setting filter to exclude certain usernames (mostly bots)
+    FILTER_QUERY = Variable.get("FILTER_QUERY")
 
     # define query params
-    query = "earthquake -minor, -is:reply -is:retweet {0}".format(filter_names_query)
+    query = "earthquake -minor, -is:reply -is:retweet {0}".format(FILTER_QUERY)
     start_time = "2021-11-15T12:00:00.000Z"
     end_time = "2021-11-15T12:49:59.000Z"
     max_results = "500"
