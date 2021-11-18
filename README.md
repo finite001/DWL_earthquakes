@@ -12,6 +12,6 @@ TODO: Finish readme once project advances
 
 ### Gitignore
 Currently ignores the following:
-*.txt # tweets which were saved locally for testing purposes
-*.env # environment variables with credentials
-*.csv
+.txt # tweets which were saved locally for testing purposes
+.env # environment variables with credentials
+.csv
