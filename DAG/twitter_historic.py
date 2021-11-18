@@ -13,8 +13,16 @@ from airflow.models import Variable
 def set_up_query(ti):
     BEARER_TOKEN = Variable.get("BEARER_TOKEN")
     # Setting filter to exclude certain usernames (hardcoded here, but extracted with
-    # code from test query)
-    filter_names_query = "-from:quakeupdates -from:jojo2727 -from:MonitorSismico -from:MyComicalLife -from:news_sokuho_bot -from:DiariosRobot -from:EN_NERV -from:GDACS -from:earthquake_jp -from:EQAlerts -from:j1_quake -from:iSachinSrivstva -from:VolcanoEWS -from:ChileAlertaApp -from:earthb0t -from:sexy_vegetables -from:zishin3255 -from:everyEarthquake -from:MapQuake -from:swap_bot_bash -from:eq_map -from:eq_map_es -from:eq_map_ww -from:SEISMOinfo -from:VegaBajaWx -from:WatchOurCity -from:Keith_Event -from:SismoDetector -from:cvb_223 -from:ExBulletinUk -from:EMSC -from:StoixeioJewelry -from:megamodo -from:earthquakevt -from:QuakeBotter -from:twtaka_jp -from:EarthquakeTw -from:ENSO1998 -from:eq_map_ww2 -from:eq_map_es2"
+    # code from test query => This was a one type step and therefore done in jupyter notebook)
+    filter_names_query = "-from:quakeupdates -from:jojo2727 -from:MonitorSismico -from:MyComicalLife " \
+                         "-from:news_sokuho_bot -from:DiariosRobot -from:EN_NERV -from:GDACS -from:earthquake_jp " \
+                         "-from:EQAlerts -from:j1_quake -from:iSachinSrivstva -from:VolcanoEWS -from:ChileAlertaApp " \
+                         "-from:earthb0t -from:sexy_vegetables -from:zishin3255 -from:everyEarthquake -from:MapQuake " \
+                         "-from:swap_bot_bash -from:eq_map -from:eq_map_es -from:eq_map_ww -from:SEISMOinfo " \
+                         "-from:VegaBajaWx -from:WatchOurCity -from:Keith_Event -from:SismoDetector -from:cvb_223 " \
+                         "-from:ExBulletinUk -from:EMSC -from:StoixeioJewelry -from:megamodo -from:earthquakevt " \
+                         "-from:QuakeBotter -from:twtaka_jp -from:EarthquakeTw -from:ENSO1998 -from:eq_map_ww2 " \
+                         "-from:eq_map_es2 "
 
     # start_time = ["2021-07-01T00:00:00.000Z", "2021-01-01T00:00:00.000Z", "2020-07-01T00:00:00.000Z", \
     #               "2020-01-01T00:00:00.000Z", "2019-07-01T00:00:00.000Z", "2019-01-01T00:00:00.000Z", \
@@ -67,7 +75,7 @@ def get_twitter_data(ti):
             if 'next_token' in json_response['meta']:
                 query_params['next_token'] = json_response['meta']['next_token']
                 next_token = json_response['meta']['next_token']
-                print("Fetching next few tweets, next_token: ", query_params['next_token'])
+                logging.info("Fetching next few tweets, next_token: ", query_params['next_token'])
                 time.sleep(3)
             else:
                 if 'next_token' in query_params:
@@ -86,9 +94,7 @@ def load_data_to_rds(ti):
     users = ti.xcom_pull(key='users', task_ids='get_twitter_data')
     # add location to all users, empty string if element does not exist (to insert data into table)
     for item in users:
-        if 'location' in item:
-            pass
-        else:
+        if 'location' not in item:
             item['location'] = ""
 
     # create iterators
