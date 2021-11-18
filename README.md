@@ -1,6 +1,8 @@
 # DWL Earthquakes
 ## Contributors: Sandro Huber, Lea Senn, Thomas Schwendimann
 
+![Architecture](img/architecture.png)
+
 ### Structure
 Jupyter Notebook: Contains the local prototypes to test our code. 
 
@@ -17,3 +19,5 @@ Currently ignores the following:
 .env # environment variables with credentials
 
 .csv
+
+.ipynb_checkpoints
