@@ -71,23 +71,16 @@ def get_twitter_data(ti):
     ti.xcom_push(key='users', value=users)
 
 
-def load_data_to_rds(ti):
+def load_tweets_to_rds(ti):
     tweets = ti.xcom_pull(key='tweets', task_ids='get_twitter_data')
-    users = ti.xcom_pull(key='users', task_ids='get_twitter_data')
-    # add location to all users, empty string if element does not exist (to insert data into table)
-    for item in users:
-        if 'location' not in item:
-            item['location'] = ""
-
-    # create iterators
     iter_tweets = iter(tweets)
-    iter_users = iter(users)
 
     # connection to postgresql db
     pg_hook = PostgresHook(postgres_conn_id="rds", schema="dbeq")
     connection = pg_hook.get_conn()
     cursor = connection.cursor()
     connection.set_session(autocommit=True)
+
     # insert tweets
     psycopg2.extras.execute_batch(cursor, """INSERT INTO tweets VALUES(
     %(text)s,
@@ -96,6 +89,21 @@ def load_data_to_rds(ti):
     %(created_at)s
     );""", iter_tweets)
 
+
+def load_users_to_rds(ti):
+    users = ti.xcom_pull(key='users', task_ids='get_twitter_data')
+    # add location to all users, empty string if element does not exist (to insert data into table)
+    for item in users:
+        if 'location' not in item:
+            item['location'] = ""
+    iter_users = iter(users)
+
+    # connection to postgresql db
+    pg_hook = PostgresHook(postgres_conn_id="rds", schema="dbeq")
+    connection = pg_hook.get_conn()
+    cursor = connection.cursor()
+    connection.set_session(autocommit=True)
+
     # insert users
     psycopg2.extras.execute_batch(cursor, """INSERT INTO tweets_user VALUES(
     %(id)s,
@@ -103,7 +111,6 @@ def load_data_to_rds(ti):
     %(name)s,
     %(location)s
     );""", iter_users)
-
 
 dag = DAG(
     'twitter_historic',
@@ -142,10 +149,16 @@ access_twitterAPI = PythonOperator(
     python_callable=get_twitter_data
 )
 
-load_data = PythonOperator(
-    task_id='load_data_to_rds',
+load_tweets = PythonOperator(
+    task_id='load_tweets_to_rds',
     dag=dag,
-    python_callable=load_data_to_rds
+    python_callable=load_tweets_to_rds
+)
+
+load_users = PythonOperator(
+    task_id='load_users_to_rds',
+    dag=dag,
+    python_callable=load_users_to_rds
 )
 
 tweet_validation = PostgresOperator(
@@ -167,4 +180,5 @@ user_validation = PostgresOperator(
         '''
 )
 
-create_table >> create_query >> access_twitterAPI >> load_data >> tweet_validation >> user_validation
+create_table >> create_query >> access_twitterAPI >> load_tweets >> tweet_validation
+create_table >> create_query >> access_twitterAPI >> load_users >> user_validation
