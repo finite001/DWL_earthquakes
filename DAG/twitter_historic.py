@@ -10,15 +10,36 @@ from airflow.operators.python_operator import PythonOperator
 from airflow.models import Variable
 
 
+def conn_postgres():
+    pg_hook = PostgresHook(postgres_conn_id="rds", schema="dbeq")
+    connection = pg_hook.get_conn()
+    cursor = connection.cursor()
+    connection.set_session(autocommit=True)
+
+    return pg_hook, connection, cursor
+
 def set_up_query(ti):
     BEARER_TOKEN = Variable.get("BEARER_TOKEN")
     # Setting filter to exclude certain usernames (mostly bots)
     FILTER_QUERY = Variable.get("FILTER_QUERY")
+    # connection to postgresql db
+    pg_hook, connection, cursor = conn_postgres()
 
     # define query params
+    cursor.execute("SELECT startdate FROM timeframes WHERE id = 1;")
+    start_time = cursor.fetchone()
+    start_time = start_time[0]
+    cursor.execute("SELECT enddate FROM timeframes WHERE id = 1;")
+    end_time = cursor.fetchone()
+    end_time = end_time[0]
+    cursor.execute("""
+                    DELETE FROM timeframes 
+                    WHERE ctid IN (SELECT ctid 
+                                FROM timeframes
+                                ORDER BY ID asc
+                                LIMIT 1;
+                """)
     query = "earthquake -minor, -is:reply -is:retweet {0}".format(FILTER_QUERY)
-    start_time = "2021-11-15T12:00:00.000Z"
-    end_time = "2021-11-15T12:49:59.000Z"
     max_results = "500"
     tweet_fields = "created_at,author_id"
     user_fields = 'username,location'
@@ -76,10 +97,7 @@ def load_tweets_to_rds(ti):
     iter_tweets = iter(tweets)
 
     # connection to postgresql db
-    pg_hook = PostgresHook(postgres_conn_id="rds", schema="dbeq")
-    connection = pg_hook.get_conn()
-    cursor = connection.cursor()
-    connection.set_session(autocommit=True)
+    pg_hook, connection, cursor = conn_postgres()
 
     # insert tweets
     psycopg2.extras.execute_batch(cursor, """INSERT INTO tweets VALUES(
@@ -88,6 +106,7 @@ def load_tweets_to_rds(ti):
     %(id)s,
     %(created_at)s
     );""", iter_tweets)
+
 
 
 def load_users_to_rds(ti):
@@ -99,10 +118,7 @@ def load_users_to_rds(ti):
     iter_users = iter(users)
 
     # connection to postgresql db
-    pg_hook = PostgresHook(postgres_conn_id="rds", schema="dbeq")
-    connection = pg_hook.get_conn()
-    cursor = connection.cursor()
-    connection.set_session(autocommit=True)
+    pg_hook, connection, cursor = conn_postgres()
 
     # insert users
     psycopg2.extras.execute_batch(cursor, """INSERT INTO tweets_user VALUES(
