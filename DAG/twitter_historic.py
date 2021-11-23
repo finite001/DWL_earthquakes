@@ -26,10 +26,10 @@ def set_up_query(ti):
     pg_hook, connection, cursor = conn_postgres()
 
     # define query params
-    cursor.execute("SELECT startdate FROM timeframes WHERE id = 1;")
+    cursor.execute("SELECT startdate FROM timeframes ORDER BY id asc LIMIT 1;")
     start_time = cursor.fetchone()
     start_time = start_time[0]
-    cursor.execute("SELECT enddate FROM timeframes WHERE id = 1;")
+    cursor.execute("SELECT enddate FROM timeframes ORDER BY id asc LIMIT 1;")
     end_time = cursor.fetchone()
     end_time = end_time[0]
     cursor.execute("""
