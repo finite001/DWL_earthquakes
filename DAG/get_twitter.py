@@ -2,19 +2,26 @@ import datetime
 import psycopg2
 import psycopg2.extras
 import requests
+import time
 
 from airflow import DAG
 from airflow.hooks.postgres_hook import PostgresHook
 from airflow.operators.postgres_operator import PostgresOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.models import Variable
+from airflow.utils.db import provide_session
+from airflow.models import XCom
+
+
+def cleanup_xcom(context, session=None):
+    dag_id = context["ti"]["dag_id"]
+    session.query(XCom).filter(XCom.dag_id == dag_id).delete()
 
 
 def conn_postgres():
     pg_hook = PostgresHook(postgres_conn_id="rds", schema="dbeq")
     connection = pg_hook.get_conn()
     cursor = connection.cursor()
-    connection.set_session(autocommit=True)
 
     return pg_hook, connection, cursor
 
@@ -26,19 +33,13 @@ def set_up_query(ti):
     pg_hook, connection, cursor = conn_postgres()
 
     # define query params
-    cursor.execute("SELECT startdate FROM timeframes ORDER BY id asc LIMIT 1;")
+    cursor.execute("SELECT startdate FROM timeframes WHERE requested = false ORDER BY id asc LIMIT 1")
     start_time = cursor.fetchone()
     start_time = start_time[0]
-    cursor.execute("SELECT enddate FROM timeframes ORDER BY id asc LIMIT 1;")
+    cursor.execute("SELECT enddate FROM timeframes WHERE requested = false ORDER BY id asc LIMIT 1")
     end_time = cursor.fetchone()
     end_time = end_time[0]
-    cursor.execute("""
-                    DELETE FROM timeframes 
-                    WHERE ctid IN (SELECT ctid 
-                                FROM timeframes
-                                ORDER BY ID asc
-                                LIMIT 1;
-                """)
+
     query = "earthquake -minor, -is:reply -is:retweet {0}".format(FILTER_QUERY)
     max_results = "500"
     tweet_fields = "created_at,author_id"
@@ -78,8 +79,8 @@ def get_twitter_data(ti):
             if 'next_token' in json_response['meta']:
                 query_params['next_token'] = json_response['meta']['next_token']
                 next_token = json_response['meta']['next_token']
-                logging.info("Fetching next few tweets, next_token: ", query_params['next_token'])
-                time.sleep(3)
+               # logging.info("Fetching next few tweets, next_token: ", query_params['next_token'])
+                time.sleep(4)
             else:
                 if 'next_token' in query_params:
                     del query_params['next_token']
@@ -107,7 +108,15 @@ def load_tweets_to_rds(ti):
     %(created_at)s
     );""", iter_tweets)
 
+    cursor.execute("""
+        UPDATE timeframes SET requested = TRUE WHERE id = (
+        SELECT id FROM timeframes 
+        WHERE requested = FALSE 
+        ORDER BY id asc
+        LIMIT 1);
+        """)
 
+    connection.commit()
 
 def load_users_to_rds(ti):
     users = ti.xcom_pull(key='users', task_ids='get_twitter_data')
@@ -128,11 +137,14 @@ def load_users_to_rds(ti):
     %(location)s
     );""", iter_users)
 
+    connection.commit()
+
 dag = DAG(
-    'twitter_historic',
-    start_date=datetime.datetime.now() - datetime.timedelta(days=1),
+    'get_twitter',
+    start_date=datetime.datetime.now(),
+    on_success_callback=cleanup_xcom,
     max_active_runs=1,
-    schedule_interval='0 */5 * * *'  # every 5 hours
+    schedule_interval='0 */3 * * *'  # every 3 hours
 )
 
 create_table = PostgresOperator(
@@ -183,7 +195,6 @@ tweet_validation = PostgresOperator(
     postgres_conn_id='rds',
     sql='''
 		SELECT * FROM tweets limit 10;
-		SELECT COUNT(*) FROM tweets;
 		'''
 )
 
