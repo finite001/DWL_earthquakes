@@ -3,54 +3,70 @@ import psycopg2
 import psycopg2.extras
 import requests
 import time
+import pandas as pd
+
 
 from airflow import DAG
 from airflow.hooks.postgres_hook import PostgresHook
 from airflow.operators.postgres_operator import PostgresOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.models import Variable
-from airflow.utils.db import provide_session
-from airflow.models import XCom
 
-
-def cleanup_xcom(context, session=None):
-    dag_id = context["ti"]["dag_id"]
-    session.query(XCom).filter(XCom.dag_id == dag_id).delete()
 
 
 def conn_postgres():
     pg_hook = PostgresHook(postgres_conn_id="rds", schema="dbeq")
     connection = pg_hook.get_conn()
+    connection.set_session(autocommit=True)
     cursor = connection.cursor()
 
     return pg_hook, connection, cursor
 
-def set_up_query(ti):
-   # BEARER_TOKEN = Variable.get("BEARER_TOKEN")
-    BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAJY%2BNgEAAAAA5SvyA6cq3jifLadZEWMEiYgUj%2FI%3Dci6sbF0x3Ya5EckuWJ6L7M4RJhptE16APFL9PMnhZPZXulQg0I"
+
+def combine_tables_tweets_users():
+    pg_hook, connection, cursor = conn_postgres()
+    twitter = pd.read_sql("SELECT * FROM dl_twitter", connection)
+    users = pd.read_sql("SELECT * from dl_twitterusers", connection)
+
+    # remove duplicates from users
+    users.drop_duplicates(subset=['id'], inplace=True)
+
+    # merge tables
+    df = pd.merge(twitter, users, how='left', left_on='author_id', right_on='id')
+    df = df.rename(columns={"id_x": "tweet_id"}).drop(columns=['id_y', 'location'])
+
+    # format date
+    df['created_at'] = pd.to_datetime(df['created_at']).dt.tz_localize(None)
+    # remove NaNs
+    df = df[~df['username'].isna()]
+
+    # write data to temp table for access
+    df.to_sql('dw_temp', con=engine, if_exists='append', chunksize=1000, index=False)
+
+
+def get_missing_data:
+    pg_hook, connection, cursor = conn_postgres()
+    BEARER_TOKEN = Variable.get("BEARER_TOKEN")
     # Setting filter to exclude certain usernames (mostly bots)
     FILTER_QUERY = Variable.get("FILTER_QUERY")
 
+    start_time = '2017-07-01T00:00:00.000Z'
+    end_time = "2017-12-31T23:59:59.000Z"
     query = "earthquake -minor, -is:reply -is:retweet {0}".format(FILTER_QUERY)
-    start_time = "2011-01-01T00:00:00.000Z"
-    end_time = "2021-10-30T23:59:59.000Z"
-    granularity = 'day'  # for daily counts
-    query_params = {'query': query, 'start_time': start_time, 'end_time': end_time, \
-                    'granularity': granularity}
-    url = "https://api.twitter.com/2/tweets/counts/all"  # url provided by the API for the counts
-    # define headers for authorization
+    max_results = "500"
+    tweet_fields = "created_at,author_id"
+    user_fields = 'username,location'
+    expansions = 'author_id'
+    counter = 0
+    query_params = {'query': query, 'tweet.fields': tweet_fields, 'user.fields': user_fields, \
+                    'start_time': start_time, 'end_time': end_time, 'max_results': max_results, \
+                    'expansions': expansions}
+    url = "https://api.twitter.com/2/tweets/search/all"
     headers = {"Authorization": "Bearer " + BEARER_TOKEN}
 
-    ti.xcom_push(key='query_params', value=query_params)
-    ti.xcom_push(key='url', value=url)
-    ti.xcom_push(key='headers', value=headers)
-
-
-def get_twitter_data(ti):
-    query_params = ti.xcom_pull(key='query_params', task_ids='set_up_query')
-    url = ti.xcom_pull(key='url', task_ids='set_up_query')
-    headers = ti.xcom_pull(key='headers', task_ids='set_up_query')
-    tweets = []
+    lst_tweets = []
+    lst_users = []
+    iteration = 0
     while True:
         # get results according to url and query
         response = requests.request("GET", url, headers=headers, params=query_params)
@@ -60,92 +76,126 @@ def get_twitter_data(ti):
         # combine data to one
         json_response = response.json()
         if 'data' in json_response:
-            tweets = tweets + json_response['data']
+            lst_tweets = lst_tweets + json_response['data']
+            lst_users = lst_users + json_response['includes']['users']
 
         # check if more data available, if yes continue process
         if 'meta' in json_response:
             if 'next_token' in json_response['meta']:
                 query_params['next_token'] = json_response['meta']['next_token']
                 next_token = json_response['meta']['next_token']
-               # logging.info("Fetching next few tweets, next_token: ", query_params['next_token'])
-                time.sleep(4)
+                #  logging.info("Fetching next few tweets, next_token: ", query_params['next_token'])
+                time.sleep(5)
             else:
-                if 'next_token' in query_params:
-                    del query_params['next_token']
-                break
+                if iteration == 0:
+                    query_params['start_time'] = '2018-07-01T00:00:00.000Z'
+                    query_params['end_time'] = '2018-10-13T23:59:59.000Z'
+                    iteration = 1
+                    if 'next_token' in query_params:
+                        del query_params['next_token']
+                else:
+                    if 'next_token' in query_params:
+                        del query_params['next_token']
+                    break
         else:
             if 'next_token' in query_params:
                 del query_params['next_token']
+                print('no meta in json_response')
             break
-    ti.xcom_push(key='tweets', value=tweets)
 
+    # merge data
+    twe = pd.DataFrame(lst_tweets)
+    use = pd.DataFrame(lst_users)
+    df = pd.merge(twe, use, how='left', left_on='author_id', right_on='id')
+    df = df.rename(columns={"id_x": "tweet_id"}).drop(columns=['id_y'])
+    df.drop(columns=['location'], inplace=True)
+    df['created_at'] = pd.to_datetime(df['created_at']).dt.tz_localize(None)
 
+    df.to_sql('dw_temp', con=engine, if_exists='append', chunksize=1000, index=False)
 
-def load_tweetcount_to_rds(ti):
-    tweets = ti.xcom_pull(key='tweets', task_ids='get_twitter_data')
-    iter_tweets = iter(tweets)
-
-    # connection to postgresql db
+def remove_bots():
     pg_hook, connection, cursor = conn_postgres()
+    df = pd.read_sql("SELECT * FROM dw_temp", connection)
+    df.drop_duplicates(subset=['tweet_id'], inplace=True)
 
-    # insert tweets
-    psycopg2.extras.execute_batch(cursor, """INSERT INTO tweetcount VALUES(
-    %(start)s,
-    %(end)s,
-    %(tweet_count)s
-    );""", iter_tweets)
+    # start with removing all users where username contains 'bot' or 'quake'
+    remove = ['quake', 'bot']
+    dw = df[~df.username.str.contains('|'.join(remove), case=False, na=False)]
 
-    connection.commit()
+    # remove users which posted more tweets than certain threshold
+    post_counts = dw.username.value_counts()
+    lst_user = post_counts.index.tolist()
+    lst_count = post_counts.tolist()
+
+    post_counts = pd.DataFrame(lst_user).rename(columns={0: 'username'})
+    post_counts['value'] = lst_count
+
+    bots = post_counts.loc[post_counts['value'] > 100].sort_values(by=['value'])
+    bots = bots.username.tolist()
+
+    dw = dw[~dw.username.str.contains('|'.join(bots), case=False, na=False)]
+    dw.to_sql('dw_twitter', con=engine, if_exists='append', chunksize=1000, index=False)
 
 
 dag = DAG(
-    'get_twitter_count',
+    'clean_datalake
     start_date=datetime.datetime.now(),
-    on_success_callback=cleanup_xcom,
     max_active_runs=1,
     schedule_interval=None
 )
 
-create_table = PostgresOperator(
-    task_id="create_table",
+create_datawarehouse_table = PostgresOperator(
+    task_id="create_datawarehouse_tables",
     dag=dag,
     postgres_conn_id='rds',
     sql='''
-        CREATE TABLE IF NOT EXISTS tweetcount (
-        starttime text, 
-        endtime text,
-        count int);
+        CREATE TABLE IF NOT EXISTS dw_twitter (
+        text text, 
+        author_id int,
+        tweet_id int,
+        created_at timestamp,
+        username text,
+        name text);
+        
+        CREATE TABLE IF NOT EXISTS dw_temp (
+        text text, 
+        author_id int,
+        tweet_id int,
+        created_at timestamp,
+        username text,,
+        name text);
         '''
 )
 
-create_query = PythonOperator(
-    task_id='set_up_query',
+combine_tables = PythonOperator(
+    task_id='combine_tables_tweets_users',
     dag=dag,
-    python_callable=set_up_query
+    python_callable=combine_tables_tweets_users
 )
 
-access_twitterAPI = PythonOperator(
-    task_id='get_twitter_data',
+get_twitter_data = PythonOperator(
+    task_id='get_missing_data',
     dag=dag,
-    python_callable=get_twitter_data
+    python_callable=get_missing_data
 )
 
-load_tweetcount = PythonOperator(
-    task_id='load_tweetcount_to_rds',
+clean_data = PythonOperator(
+    task_id='remove_bots',
     dag=dag,
-    python_callable=load_tweetcount_to_rds
+    python_callable=remove_bots
 )
 
 
-tweet_validation = PostgresOperator(
+delete_table = PostgresOperator(
     task_id="tweets_validation",
     dag=dag,
     postgres_conn_id='rds',
     sql='''
-		SELECT * FROM tweetcount limit 10;
+		DROP TABLE IF EXISTS dw_temp;
 		'''
 )
 
 
 
-create_table >> create_query >> access_twitterAPI >> load_tweetcount >> tweet_validation
+create_datawarehouse_table >> combine_tables >> clean_data >> delete_table
+create_datawarehouse_table >> get_missing_data >> clean_data >> delete_table

@@ -26,8 +26,7 @@ def conn_postgres():
     return pg_hook, connection, cursor
 
 def set_up_query(ti):
-   # BEARER_TOKEN = Variable.get("BEARER_TOKEN")
-    BEARER_TOKEN = "AAAAAAAAAAAAAAAAAAAAAJY%2BNgEAAAAA5SvyA6cq3jifLadZEWMEiYgUj%2FI%3Dci6sbF0x3Ya5EckuWJ6L7M4RJhptE16APFL9PMnhZPZXulQg0I"
+    BEARER_TOKEN = Variable.get("BEARER_TOKEN")
     # Setting filter to exclude certain usernames (mostly bots)
     FILTER_QUERY = Variable.get("FILTER_QUERY")
 
