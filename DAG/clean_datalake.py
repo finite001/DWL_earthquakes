@@ -41,7 +41,7 @@ def combine_tables_tweets_users():
     df.to_sql('dw_temp', con=connection, if_exists='append', chunksize=1000, index=False)
 
 
-def get_missing_data:
+def get_missing_data():
     pg_hook, connection, cursor = conn_postgres()
     BEARER_TOKEN = Variable.get("BEARER_TOKEN")
     # Setting filter to exclude certain usernames (mostly bots)
