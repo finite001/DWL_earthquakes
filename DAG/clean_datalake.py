@@ -2,6 +2,7 @@ import pandas as pd
 import requests
 import time
 import json
+import datetime
 
 from airflow import DAG
 from airflow.hooks.postgres_hook import PostgresHook
@@ -132,7 +133,7 @@ def remove_bots():
 
 
 dag = DAG(
-    'clean_datalake
+    'clean_datalake',
     start_date=datetime.datetime.now(),
     max_active_runs=1,
     schedule_interval=None

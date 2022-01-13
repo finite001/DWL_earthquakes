@@ -9,7 +9,6 @@ from airflow.hooks.postgres_hook import PostgresHook
 from airflow.operators.postgres_operator import PostgresOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.models import Variable
-from airflow.utils.db import provide_session
 from airflow.models import XCom
 
 
