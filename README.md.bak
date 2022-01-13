@@ -1,8 +1,6 @@
 # DWL Earthquakes
 ## Contributors: Sandro Huber, Lea Senn, Thomas Schwendimann
 
-### Project Description
-This project of the module Data Warehouse and Data Lake I + II aims to use Twitter as an early warning system for earthquakes. The details of this project can be found in the folder docs, where the whole project is documented.
 ![Architecture](img/architecture.png)
 
 ### Structure
@@ -17,6 +15,7 @@ Unused: Contains scripts that were not used in the final project
 
 docs: Contains project documentation
 
+TODO: Finish readme once project advances
 
 
 ### Gitignore
