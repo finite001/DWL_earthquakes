@@ -4,9 +4,14 @@
 ![Architecture](img/architecture.png)
 
 ### Structure
-Jupyter Notebook: Contains the local prototypes to test our code. 
 
 DAG: Contains the final code for the pipeline
+
+Jupyter Notebook: Contains local prototypes to test our code. 
+
+Python Scripts: Contains local prototypes to test our code
+
+Unused: Contains scripts that were not used in the final project
 
 docs: Contains project documentation
 
