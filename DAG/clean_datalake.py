@@ -1,10 +1,7 @@
-import datetime
-import psycopg2
-import psycopg2.extras
+import pandas as pd
 import requests
 import time
-import pandas as pd
-
+import json
 
 from airflow import DAG
 from airflow.hooks.postgres_hook import PostgresHook
@@ -41,10 +38,10 @@ def combine_tables_tweets_users():
     df = df[~df['username'].isna()]
 
     # write data to temp table for access
-    df.to_sql('dw_temp', con=engine, if_exists='append', chunksize=1000, index=False)
+    df.to_sql('dw_temp', con=connection, if_exists='append', chunksize=1000, index=False)
 
 
-def get_missing_data:
+def get_missing_data():
     pg_hook, connection, cursor = conn_postgres()
     BEARER_TOKEN = Variable.get("BEARER_TOKEN")
     # Setting filter to exclude certain usernames (mostly bots)
@@ -57,7 +54,6 @@ def get_missing_data:
     tweet_fields = "created_at,author_id"
     user_fields = 'username,location'
     expansions = 'author_id'
-    counter = 0
     query_params = {'query': query, 'tweet.fields': tweet_fields, 'user.fields': user_fields, \
                     'start_time': start_time, 'end_time': end_time, 'max_results': max_results, \
                     'expansions': expansions}
@@ -83,8 +79,6 @@ def get_missing_data:
         if 'meta' in json_response:
             if 'next_token' in json_response['meta']:
                 query_params['next_token'] = json_response['meta']['next_token']
-                next_token = json_response['meta']['next_token']
-                #  logging.info("Fetching next few tweets, next_token: ", query_params['next_token'])
                 time.sleep(5)
             else:
                 if iteration == 0:
@@ -111,7 +105,7 @@ def get_missing_data:
     df.drop(columns=['location'], inplace=True)
     df['created_at'] = pd.to_datetime(df['created_at']).dt.tz_localize(None)
 
-    df.to_sql('dw_temp', con=engine, if_exists='append', chunksize=1000, index=False)
+    df.to_sql('dw_temp', con=connection, if_exists='append', chunksize=1000, index=False)
 
 def remove_bots():
     pg_hook, connection, cursor = conn_postgres()
@@ -134,7 +128,7 @@ def remove_bots():
     bots = bots.username.tolist()
 
     dw = dw[~dw.username.str.contains('|'.join(bots), case=False, na=False)]
-    dw.to_sql('dw_twitter', con=engine, if_exists='append', chunksize=1000, index=False)
+    dw.to_sql('dw_twitter', con=connection, if_exists='append', chunksize=1000, index=False)
 
 
 dag = DAG(
