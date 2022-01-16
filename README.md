@@ -19,7 +19,7 @@ Unused: Contains scripts that were not used in the final project
 
 docs: Contains project documentation
 
-
+tableau: Contains the final visualization
 
 ### Gitignore
 Currently ignores the following:
